@@ -1,6 +1,6 @@
 /******************************************************************************/
 /* src/Proc.c                                                                 */
-/*                                                                 2018/09/26 */
+/*                                                                 2018/10/05 */
 /* Copyright (C) 2018 Mochi.                                                  */
 /******************************************************************************/
 /******************************************************************************/
@@ -42,13 +42,13 @@ void ProcDataE1( void );
 /******************************************************************************/
 /* グローバル変数定義                                                         */
 /******************************************************************************/
-/* 処理状態 */
+/** 処理状態 */
 static uint32_t gState;
 
-/* メッセージ */
-static MtermMsgInput_t gMsg;
+/** バッファ */
+static uint8_t gBuffer[ 3 ];
 
-/* 読込インデックス */
+/** 読込インデックス */
 static uint32_t gReadIdx;
 
 
@@ -66,12 +66,10 @@ void ProcInit( void )
     /* 状態初期化 */
     gState = STATE_NORMAL;
     
-    /* メッセージ初期化 */
-    gMsg.header.funcId = MTERM_FUNC_INPUT;
-    gMsg.header.length = 3;
-    gMsg.data[ 0 ]     = 0;
-    gMsg.data[ 1 ]     = 0;
-    gMsg.data[ 2 ]     = 0;
+    /* バッファ初期化 */
+    gBuffer[ 0 ] = 0;
+    gBuffer[ 1 ] = 0;
+    gBuffer[ 2 ] = 0;
     
     /* 読込インデックス初期化 */
     gReadIdx = 0;
@@ -89,12 +87,11 @@ void ProcInit( void )
 /******************************************************************************/
 void ProcInterrupt( void )
 {
-    bool    retBool;
-    uint8_t data;
+    bool retBool;
     
     while ( true ) {
         /* 出力バッファ読込 */
-        retBool = CtrlReadOutput( &( gMsg.data[ gReadIdx ] ) );
+        retBool = CtrlReadOutput( &gBuffer[ gReadIdx ] );
         
         /* 読込結果判定 */
         if ( retBool == false ) {
@@ -140,14 +137,16 @@ void ProcInterrupt( void )
 /******************************************************************************/
 void ProcDataNormal( void )
 {
+    MtermMsgInput_t msg;
+    
     /* スキャンコード判定 */
-    if ( gMsg.data[ 0 ] == 0xE0 ) {
+    if ( gBuffer[ 0 ] == 0xE0 ) {
         /* 拡張E0スキャンコード */
         
         /* 状態遷移 */
         gState = STATE_E0;
         
-    } else if ( gMsg.data[ 0 ] == 0xE1 ) {
+    } else if ( gBuffer[ 0 ] == 0xE1 ) {
         /* 拡張E1スキャンコード */
         
         /* 状態遷移 */
@@ -156,8 +155,13 @@ void ProcDataNormal( void )
     } else {
         /* 通常スキャンコード */
         
+        /* メッセージ設定 */
+        msg.header.funcId = MTERM_FUNC_INPUT;
+        msg.header.length = sizeof ( msg.scan );
+        msg.scan          = ( ( uint32_t ) gBuffer[ 0 ] ) << 16;
+        
         /* ターミナルエミュレータに転送 */
-        MkMsgSend( 3, &gMsg, sizeof ( gMsg ), NULL );
+        MkMsgSend( 3, &msg, sizeof ( msg ), NULL );
         
         /* 初期化 */
         ProcInit();
@@ -176,12 +180,20 @@ void ProcDataNormal( void )
 /******************************************************************************/
 void ProcDataE0( void )
 {
+    MtermMsgInput_t msg;
+    
     /* コード数チェック */
     if ( gReadIdx == 2 ) {
         /* 完全 */
         
+        /* メッセージ設定 */
+        msg.header.funcId = MTERM_FUNC_INPUT;
+        msg.header.length = sizeof ( msg.scan );
+        msg.scan          = ( ( ( uint32_t ) gBuffer[ 0 ] ) << 16 ) |
+                            ( ( ( uint32_t ) gBuffer[ 1 ] ) <<  8 );
+        
         /* ターミナルエミュレータに転送 */
-        MkMsgSend( 3, &gMsg, sizeof ( gMsg ), NULL );
+        MkMsgSend( 3, &msg, sizeof ( msg ), NULL );
         
         /* 初期化 */
         ProcInit();
@@ -200,12 +212,21 @@ void ProcDataE0( void )
 /******************************************************************************/
 void ProcDataE1( void )
 {
+    MtermMsgInput_t msg;
+    
     /* コード数チェック */
     if ( gReadIdx == 3 ) {
         /* 完全 */
         
+        /* メッセージ設定 */
+        msg.header.funcId = MTERM_FUNC_INPUT;
+        msg.header.length = sizeof ( msg.scan );
+        msg.scan          = ( ( ( uint32_t ) gBuffer[ 0 ] ) << 16 ) |
+                            ( ( ( uint32_t ) gBuffer[ 1 ] ) <<  8 ) |
+                            (   ( uint32_t ) gBuffer[ 2 ]         );
+        
         /* ターミナルエミュレータに転送 */
-        MkMsgSend( 3, &gMsg, sizeof ( gMsg ), NULL );
+        MkMsgSend( 3, &msg, sizeof ( msg ), NULL );
         
         /* 初期化 */
         ProcInit();
